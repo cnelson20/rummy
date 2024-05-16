@@ -437,6 +437,7 @@ struct match *check_valid_move() {
 			contains_picked_up_card = 1;
 		}
 	}
+	if (!contains_picked_up_card) return NULL;
 	
 	// Must have 3 of a kind or in a row to play out
 	if (selected_cards_size >= 3 && rank_match) {
@@ -585,12 +586,12 @@ unsigned char is_lower_rank(unsigned char r1, unsigned char r2, unsigned char ac
 		if (r1 == CARD_ACE) r1 += 13;
 		if (r2 == CARD_ACE) r2 += 13;
 	}
-	return r1 < r2;
+	return r1 <= r2;
 }
 
 unsigned char is_lower_rank_both_aces(unsigned char r1, unsigned char r2) {
 	if (r2 == CARD_ACE) return 1;
-	return r1 < r2;
+	return r1 <= r2;
 }
 
 unsigned char is_one_rank_lower(unsigned char r1, unsigned char r2) {
@@ -968,6 +969,8 @@ unsigned char card_graphics_array_bottom[] = {0x4A, 0x40, 0x40, 0x40, 0x40, 0x40
 unsigned char card_graphics_blank[] = {0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20};
 unsigned char card_graphics_empty[] = {0x5D, 0x60, 0x60, 0x60, 0x60, 0x60, 0x5D, 0x20};
 
+unsigned char card_graphics_undo[] = {0x5D, 'U' - 0x40, 'N' - 0x40, 'D' - 0x40, 'O' - 0x40, 0x60, 0x5D, 0x20};
+
 unsigned char card_front_array_top[] = {0xFC, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xFD, 0x20};
 unsigned char card_front_array_bottom[] = {0xFE, 0xF9, 0xF9, 0xF9, 0xF9, 0xF9, 0xFF, 0x20};
 
@@ -1064,7 +1067,7 @@ void draw_line(unsigned char *graphics) {
 	__asm__ ("inc $9F21");
 }
 
-void draw_repeat_card(unsigned char *graphics_line) {
+void draw_blank_card() {
 	unsigned char i;
 	unsigned char xoff, yoff;
 	
@@ -1073,15 +1076,36 @@ void draw_repeat_card(unsigned char *graphics_line) {
 	
 	for (i = 0; i < CARD_GRAPHICS_HEIGHT; ++i) {
 		POKE(0x9F20, xoff);
-		draw_line(graphics_line);
+		draw_line(card_graphics_blank);
 	}
 	
 	POKE(0x9F21, yoff + CARD_DRAW_YOFF);
 	POKE(0x9F20, xoff + (CARD_DRAW_XOFF << 1));
 }
 
-void draw_blank_card() {
-	draw_repeat_card(card_graphics_blank);
+void draw_undo_card() {
+	unsigned char i;
+	unsigned char xoff, yoff;
+
+	xoff = PEEK(0x9F20);
+	yoff = PEEK(0x9F21);
+
+	draw_line(card_graphics_array_top);
+
+	for (i = 1; i < CARD_GRAPHICS_HEIGHT - 1; ++i) {
+		POKE(0x9F20, xoff);
+		if (i + 1 == (CARD_GRAPHICS_HEIGHT >> 1)) {
+			draw_line(card_graphics_undo);
+		} else {
+			draw_line(card_graphics_empty);
+		}
+	}
+
+	POKE(0x9F20, xoff);
+	draw_line(card_graphics_array_bottom);
+
+	POKE(0x9F21, yoff + CARD_DRAW_YOFF);
+	POKE(0x9F20, xoff + (CARD_DRAW_XOFF << 1));
 }
 
 void draw_empty_card() {
@@ -1318,13 +1342,19 @@ void draw_deck_pile() {
 	POKE(0x9F20, get_x_offset(1) << 1);
 	
 	if (discard[0] == CARD_NP) {
-		draw_empty_card();
+		if (picked_up_card == NULL) {
+			draw_empty_card();
+		}
 	} else {
 		draw_card(discard[0]);
 	}
 	for (i = 1; discard[i] != CARD_NP; ++i) {
 		draw_card(discard[i]);
 	}
+	if (picked_up_card != NULL) {
+		draw_undo_card();
+	}
+
 	POKE(0x9F20, PEEK(0x9F20) + (CARD_GRAPHICS_WIDTH - CARD_DRAW_XOFF) * 2);
 	clear_rect(PEEK(0x9F20) >> 1, PILE_Y_OFFSET, SCREEN_WIDTH, PILE_Y_END + 1);
 	
