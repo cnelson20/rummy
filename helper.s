@@ -1,0 +1,149 @@
+entropy_get := $FECF
+mouse_config := $FF68
+mouse_get := $FF6B
+screen_mode := $FF5F
+
+.struct mouse
+	x_pos .word
+	y_pos .word
+	buttons .byte
+.endstruct
+
+.setcpu "65c02"
+.importzp tmp1, tmp2, tmp3, tmp4
+.importzp ptr1, ptr2, ptr3, ptr4
+.importzp sreg
+
+.import _default_color
+
+.export _deck
+_deck := $9000
+
+.export _player_hand
+_player_hand := $9040
+
+.export _computer_hand
+_computer_hand := $9080
+
+.export _discard
+_discard := $90C0
+
+.export _rank_counts
+_rank_counts := $9100
+
+RDTIM = $FFDE
+
+.SEGMENT "CODE"
+
+.importzp ptr1
+
+.import _player_matches
+.import _computer_matches
+	lda #<_player_matches
+	lda #<_computer_matches
+
+.export _waitforjiffy
+_waitforjiffy:
+jsr RDTIM
+sta ptr1
+:
+jsr RDTIM
+cmp ptr1
+beq :-
+
+rts
+
+.export _rand_byte
+_rand_byte:
+	jsr entropy_get
+	stx tmp1
+	eor tmp1
+	sty tmp1
+	eor tmp1
+	rts
+
+.export _rand_word
+_rand_word:
+	jsr _rand_byte
+	pha
+	jsr _rand_byte
+	plx
+	rts
+	
+SCREEN_HEIGHT = 60
+SCREEN_WIDTH = 80
+
+.export _clear_screen
+_clear_screen:
+	stz $9F20
+	stz $9F21
+	
+	lda #$10
+	sta $9F22
+	
+	ldy #0
+	:
+	ldx #0
+	:
+	lda #$20
+	sta $9F23
+	lda _default_color
+	sta $9F23
+	
+	inx
+	cpx #SCREEN_WIDTH
+	bcc :-
+	
+	inc $9F21
+	stz $9F20
+	
+	iny
+	cpy #SCREEN_HEIGHT
+	bcc :--
+	rts
+
+.export _set_bg_screen
+_set_bg_screen:
+	lda #$20
+	sta $9F22
+	
+	stz $9F21
+	ldy #SCREEN_HEIGHT
+	:
+	ldx #SCREEN_WIDTH
+	lda #1
+	sta $9F20
+	lda _default_color
+	:
+	sta $9F23
+	dex
+	bne :-
+	
+	inc $9F21
+	dey
+	bne :--
+	rts
+
+.export _enable_mouse
+_enable_mouse:
+	sec
+	jsr screen_mode
+	lda #1
+	jmp mouse_config
+	
+.export _mouse_get
+_mouse_get:
+	sta ptr1
+	stx ptr1 + 1
+	
+	ldx #$02
+	jsr mouse_get
+	ldy #mouse::buttons
+	sta (ptr1), Y
+	dey
+	:
+	lda $02, Y
+	sta (ptr1), Y
+	dey
+	bpl :-
+	rts
