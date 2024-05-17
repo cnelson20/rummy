@@ -47,6 +47,8 @@ unsigned char already_drew_card;
 unsigned char game_over;
 unsigned char player_went_out_first;
 
+unsigned char show_computer_hand = 0;
+
 #define DEFAULT_BG_COLOR 0x5
 unsigned char default_color = (DEFAULT_BG_COLOR << 4) | 0x1;
 
@@ -1348,7 +1350,7 @@ void draw_selected_card() {
 	}
 }
 
-#define SHOW_COMPUTER_HAND
+//#define SHOW_COMPUTER_HAND
 
 void draw_hands() {
 	unsigned char i;
@@ -1362,14 +1364,16 @@ void draw_hands() {
 	for (i = 0; computer_hand[i] != CARD_NP; ++i) {
 		POKE(0x9F21, 0);
 		draw_half_card_back();
-		#ifdef SHOW_COMPUTER_HAND
-		POKE(0x9F20, PEEK(0x9F20) - 6);
-		POKE(0x9F21, CARD_GRAPHICS_HEIGHT >> 1);
-		POKE(0x9F23, get_card_char(computer_hand[i]));
-		POKE(0x9F23, default_color);
-		POKE(0x9F23, get_card_suite(computer_hand[i]));
-		POKE(0x9F20, PEEK(0x9F20) + 3);
-		#endif
+		
+		// You can peek if you're a cheater
+		if (show_computer_hand) {
+			POKE(0x9F20, PEEK(0x9F20) - 6);
+			POKE(0x9F21, CARD_GRAPHICS_HEIGHT >> 1);
+			POKE(0x9F23, get_card_char(computer_hand[i]));
+			POKE(0x9F23, default_color);
+			POKE(0x9F23, get_card_suite(computer_hand[i]));
+			POKE(0x9F20, PEEK(0x9F20) + 3);
+		}
 	}
 	if (i) { 
 		POKE(0x9F20, PEEK(0x9F20) + ((CARD_GRAPHICS_WIDTH - CARD_DRAW_XOFF) << 1)); 
@@ -1558,6 +1562,8 @@ void wait_click_space_pressed() {
 	unsigned char key_pressed;
 	while (1) {
 		key_pressed = cbm_k_getin();
+		if (key_pressed == 'S') { show_computer_hand = 1; }
+		
 		if (last_key_pressed == 0x20) {
 			if (key_pressed != 0x20) {
 				last_key_pressed = key_pressed;
