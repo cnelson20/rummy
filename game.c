@@ -52,7 +52,9 @@ unsigned char default_color = (DEFAULT_BG_COLOR << 4) | 0x1;
 
 void main() {
 	setup_video();
-	
+	display_game_controls();
+	display_game_rules();
+
 	while (1) {
 		start_game();
 		display_piles();
@@ -1537,7 +1539,7 @@ void poke_str(char *str) {
 	unsigned char c;
 	while (*str) {
 		c = *str;
-		if (c >= 'A') { c -= 0x40; }
+		if (c >= 'A' && c <= 'Z') { c -= 0x40; }
 		POKE(0x9F23, c);
 		POKE(0x9F23, default_color);
 		
@@ -1549,29 +1551,128 @@ unsigned char center_str_offset(unsigned char strlen) {
 	return (40 - (strlen >> 1)) << 1;
 }
 
-char easy_string[] = "PRESS 1 TO DEAL 1 CARD AT A TIME";
-#define EASY_STRLEN (sizeof(easy_string) - 1)
+void wait_click_space_pressed() {
+	unsigned char last_key_pressed = 0x20;
+	unsigned char last_mouse = 0xFF;
 
-char harder_string[] = "PRESS 3 TO DEAL 3 AT A TIME";
-#define HARDER_STRLEN (sizeof(harder_string) - 1)
-
-void prompt_difficulty() {
-	POKE(0x9F22, 0x10);
-	POKE(0x9F21, 29);
-	POKE(0x9F20, center_str_offset(EASY_STRLEN));
-	poke_str(easy_string);
-	
-	POKE(0x9F21, 31);
-	POKE(0x9F20, center_str_offset(EASY_STRLEN));
-	poke_str(harder_string);
-	
-	do {
-		unsigned char key_pressed;
+	unsigned char key_pressed;
+	while (1) {
 		key_pressed = cbm_k_getin();
-		
-		break;
-	} while (1);
+		if (last_key_pressed == 0x20) {
+			if (key_pressed != 0x20) {
+				last_key_pressed = key_pressed;
+			}
+		} else {
+			if (key_pressed == 0x20) return;
+		}
+
+		mouse_get(&mouse_input);
+		if ((last_mouse & 0x1) == 0 && (mouse_input.buttons & 0x1) == 1) return;
+		last_mouse &= mouse_input.buttons;
+	}
+
+}
+
+char press_space_continue_str[] = "-- CLICK OR PRESS SPACE TO CONTINUE --";
+
+char control_strings[][70] = {
+	"CONTROLS:"
+	"",
+	"LEFT CLICK TO SELECT CARDS",
+	"RIGHT CLICK TO UNSELECT ALL CARDS",
+	"",
+	"CLICK THE DECK TO DRAW FROM THE DECK",
+	"CLICK A CARD IN THE DISCARD PILE TO PICK IT UP AND ALL CARDS ABOVE IT",
+	"ONCE A CARD IS DRAWN, CLICK THE DISCARD PILE WITH ONE CARD SELECTED",
+	"TO DISCARD IT AND END YOUR TURN.",
+	"TO PLAY A MATCH, SELECT ALL THE CARDS IN THE MATCH",
+	"AND CLICK THE EMPTY CARD SHAPE BELOW THE DECK.",
+	"IF YOUR PLAY WAS NOT A VALID MATCH, IT WILL PLAY A BEEP.",
+};
+#define CONTROL_STRINGS_LEN 11
+
+void display_game_controls() {
+	unsigned char i;
+
+	display_rummy_bigtext(1);
+
+	POKE(0x9F22, 0x10);
+	POKE(0x9F21, 10);
+	for (i = 0; i < CONTROL_STRINGS_LEN; ++i) {
+		POKE(0x9F20, 1 << 1);
+		poke_str(control_strings[i]);
+
+		POKE(0x9F21, 2 + PEEK(0x9F21));
+	}
+	POKE(0x9F21, 4 + PEEK(0x9F21));
+	POKE(0x9F20, 1 << 1);
+	poke_str(press_space_continue_str);
+
+	wait_click_space_pressed();
+	clear_screen();
+}
+
+char rummy_logo[][40] = {
+	{ 0xA0,0xA0,0xA0,0xA0,0x20,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20, 0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0, 0x00},
+	{ 0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0xA0,0x20,0xA0, 0xA0,0x20,0xA0,0xA0,0x20,0xA0,0xA0,0x20,0x20,0xA0,0x20,0xA0,0x20, 0x00},
+	{ 0xA0,0xA0,0xA0,0xA0,0x20,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0xA0,0x20, 0xA0,0x20,0xA0,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0x20, 0x00},
+	{ 0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0x20,0x20,0x20, 0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0x20, 0x00},
+	{ 0xA0,0x20,0x20,0x20,0xA0,0x20,0xA0,0xA0,0xA0,0xA0,0xA0,0x20,0xA0,0x20,0x20,0x20, 0xA0,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0x20,0x20,0xA0,0x20,0x20, 0x00},
+};
+
+void display_rummy_bigtext(unsigned char x_offset) {
+	unsigned char i;
+	POKE(0x9F22, 0x10);
+	POKE(0x9F21, 2);
 	
+	for (i = 0; i < 5; ++i) {
+		POKE(0x9F20, x_offset << 1);
+		poke_str(rummy_logo[i]);
+		__asm__ ("inc $9F21");
+	}
+}
+
+char game_rule_strs[][80] = {
+	"THE OBJECTIVE OF THE GAME IS TO SCORE MORE POINTS THAN YOUR OPPONENT,",
+	"ACHIEVED BY PLAYING 3 CARDS OF THE SAME RANK OR 3 OF THE SAME SUITE IN A ROW.",
+	"ONCE EITHER PLAYER RUNS OUT OF CARDS,",
+	"THEY ALSO ADD THE POINT VALUES OF THE OTHER PLAYER'S HAND TO THEIR SCORE.",
+	"PLAYERS CAN PLAY OFF BOTH THEIR EXISTING MATCHES AND THOSE OF THEIR OPPONENT.",
+	"",
+	"AT THE START OF A PLAYER'S TURN, THEY MAY EITHER DRAW FROM THE DECK",
+	"OR PICK UP A PORTION OF THE CARDS FROM THE DISCARD PILE.",
+	"IF THEY DO SO, THEY MUST PICK UP ALL THE CARDS ABOVE THE FIRST THEY PICK UP,",
+	"AND THEY MUST PLAY THAT CARD TO FORM A MATCH THIS TURN.",
+	"(THE GAME ALSO CHECKS THAT IT IS THE FIRST MATCH YOU PLAY THAT TURN)",
+	"AT ANY TIME THE PLAYER MAY PLAY ANY MATCHES FROM THEIR HAND. ",
+	"ONCE THEY ARE DONE, THEY MUST DISCARD A CARD TO THE TOP OF THE DISCARD PILE.",
+	"",
+	"SCORING:",
+	"2-10 ARE WORTH 5 POINTS",
+	"J,Q,K (FACE CARDS) ARE WORTH 10",
+	"ACES ARE WORTH 15 POINTS",
+};
+#define GAME_RULE_STRS_LEN 18
+
+void display_game_rules() {
+	unsigned char i;
+
+	display_rummy_bigtext(1);
+
+	POKE(0x9F22, 0x10);
+	POKE(0x9F21, 10);
+
+	for (i = 0; i < GAME_RULE_STRS_LEN; ++i) {
+		POKE(0x9F20, 1 << 1);
+		poke_str(game_rule_strs[i]);
+
+		POKE(0x9F21, 2 + PEEK(0x9F21));
+	}
+	POKE(0x9F21, 4 + PEEK(0x9F21));
+	POKE(0x9F20, 1 << 1);
+	poke_str(press_space_continue_str);
+
+	wait_click_space_pressed();
 	clear_screen();
 }
 

@@ -65,7 +65,10 @@ void draw_deck_pile();
 
 void poke_str(char *str);
 unsigned char center_str_offset(unsigned char strlen);
-void prompt_difficulty();
+
+void display_rummy_bigtext(unsigned char x_offset);
+void display_game_controls();
+void display_game_rules();
 
 void display_win();
 
