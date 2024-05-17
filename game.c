@@ -13,6 +13,8 @@
 
 #define CLICKED_EMPTY ((unsigned char *)0xFFFF)
 #define CLICKED_BOARD ((unsigned char *)0xFFFE)
+#define CLICKED_LEFT ((unsigned char *)0xFFFD)
+#define CLICKED_RIGHT ((unsigned char *)0xFFFC)
 
 #define NEW_MATCH ((struct match *)0xFFFF)
 
@@ -217,18 +219,29 @@ unsigned char max_hand_display_offset(unsigned char hand_size) {
 	}
 }
 
-void parse_keys() {
-	unsigned char key_pressed;
-	unsigned char player_hand_size = get_pile_size(player_hand);
-	key_pressed = cbm_k_getin();
-
-	if (key_pressed) POKEW(0x0C, key_pressed);
-	if (key_pressed == CH_CURS_LEFT && hand_display_offset != 0) {
+void move_hand_offset_left() {
+	if (hand_display_offset != 0) {
 		--hand_display_offset;
 		draw_hands();
-	} else if (key_pressed == CH_CURS_RIGHT && hand_display_offset < max_hand_display_offset(player_hand_size)) {
+	}
+}
+
+void move_hand_offset_right() {
+	unsigned char player_hand_size = get_pile_size(player_hand);
+
+	if (hand_display_offset < max_hand_display_offset(player_hand_size)) {
 		++hand_display_offset;
 		draw_hands();
+	}
+}
+
+void parse_keys() {
+	unsigned char key_pressed = cbm_k_getin();
+
+	if (key_pressed == CH_CURS_LEFT) {
+		move_hand_offset_left();
+	} else if (key_pressed == CH_CURS_RIGHT) {
+		move_hand_offset_right();
 	}
 }
 
@@ -245,6 +258,10 @@ void parse_mouse_mvmt() {
 		selected_cards_size = 0;
 		draw_selected_card();
 		return;
+	} else if (selection == CLICKED_LEFT) {
+		move_hand_offset_left();
+	} else if (selection == CLICKED_RIGHT) {
+		move_hand_offset_right();
 	// If selection is from deck, draw a card if possible
 	} else if (selection == deck) {
 		if (already_drew_card) {
@@ -266,7 +283,6 @@ void parse_mouse_mvmt() {
 		}
 		picked_up_card = NULL;
 		integrate_cards_match(matchptr);
-		check_player_hand_size();
 	// If selection is a card in discard pile, either pick it up or discard a card from hand
 	} else if (selection >= discard && selection < discard + sizeof(discard)) {
 		if (already_drew_card) {
@@ -327,6 +343,7 @@ void check_player_hand_size() {
 	max_hand_offset = max_hand_display_offset(player_hand_size);
 	if (hand_display_offset >= max_hand_offset) {
 		hand_display_offset = max_hand_offset;
+		draw_hands();
 	}
 }
 
@@ -385,6 +402,10 @@ unsigned char *find_selection() {
 		
 		// Check if we've clicked on the player's hand
 		} else if (tile_val != 0x20 && tile_y >= HAND_Y_OFFSET && tile_y < HAND_Y_END) {
+			if (tile_x < get_x_offset(0)) {
+				return CLICKED_LEFT;
+			}
+			
 			pile_size = get_pile_size(player_hand);
 			
 			if (pile_size != 0) {
@@ -711,33 +732,34 @@ void integrate_cards_match(struct match *matchptr) {
 
 	selected_cards[0] = NULL;
 	selected_cards_size = 0;
+	check_player_hand_size();
 	draw_selected_card();
 	display_piles();
 	return;
 }
 
-extern unsigned char rank_counts[MAX_RANK_EXCL];
-//unsigned char rank_counts[MAX_RANK_EXCL];
-
 /*
 	calc_rank_counts()
-	fills rank_counts array
-	returns get_pile_size(computer_hand)
+	fills rank_count_arr with counts of each rank in pile
+	returns get_pile_size(pile)
 */
-unsigned char calc_rank_counts() {
+unsigned char calc_rank_counts(unsigned char *rank_count_arr, unsigned char *pile) {
 	unsigned char i;
-	unsigned char comp_hand_size;
+	unsigned char pile_size;
 
 	for (i = 0; i < MAX_RANK_EXCL; ++i) {
-		rank_counts[i] = 0;
+		rank_count_arr[i] = 0;
 	}
-	comp_hand_size = get_pile_size(computer_hand);
-	for (i = 0; i < comp_hand_size; ++i) {
-		++(rank_counts[ get_card_rank(computer_hand[i]) ]);
+	pile_size = get_pile_size(pile);
+	for (i = 0; i < pile_size; ++i) {
+		++(rank_count_arr[ get_card_rank(pile[i]) ]);
 	}
 
-	return comp_hand_size;
+	return pile_size;
 }
+
+extern unsigned char rank_counts[MAX_RANK_EXCL];
+//unsigned char rank_counts[MAX_RANK_EXCL];
 
 void computer_turn() {
 	unsigned char comp_hand_size;
@@ -750,7 +772,7 @@ void computer_turn() {
 	selected_cards[0] = NULL;
 
 	// Populate array of count of each rank
-	comp_hand_size = calc_rank_counts();
+	comp_hand_size = calc_rank_counts(rank_counts, computer_hand);
 	
 	// Decide between drawing and picking up a card
 	already_drew_card = 0;
@@ -771,7 +793,7 @@ void computer_turn() {
 		}
 	}
 	// Recalc rank_counts since we messed with it
-	comp_hand_size = calc_rank_counts();
+	comp_hand_size = calc_rank_counts(rank_counts, computer_hand);
 	
 	// We haven't picked up anything, draw instead
 	if (!already_drew_card) {
@@ -807,6 +829,35 @@ void computer_turn() {
 		integrate_cards_match(NEW_MATCH);
 		comp_hand_size = get_pile_size(computer_hand);
 	}
+	// Check for 3 in a row
+	sort_pile_rank(computer_hand);
+
+	for (i = 0; i < comp_hand_size - 2; ++i) {
+		unsigned char r0, r1, r2;
+
+		if (get_card_suite(computer_hand[i]) != get_card_suite(computer_hand[i + 1])) continue;
+		if (get_card_suite(computer_hand[i]) != get_card_suite(computer_hand[i + 2])) continue;
+
+		r0 = get_card_rank(computer_hand[i]);
+		r1 = get_card_rank(computer_hand[i + 1]);
+		r2 = get_card_rank(computer_hand[i + 2]);
+
+		if (!is_one_rank_lower(r0, r1)) continue;
+		if (!is_one_rank_lower(r1, r2)) continue;
+		if (!is_lower_rank_both_aces(r0, r2)) continue;
+
+		selected_cards_size = 3;
+		selected_cards[0] = &( computer_hand[i] );
+		selected_cards[1] = &( computer_hand[i + 1] );
+		selected_cards[2] = &( computer_hand[i + 2] );
+		integrate_cards_match(NEW_MATCH);
+		selected_cards_size = 0;
+		comp_hand_size -= 3;
+		--rank_counts[ r0 ];
+		--rank_counts[ r1 ];
+		--rank_counts[ r2 ];
+		--i;
+	}
 	// Check if each card goes with anything on the board
 	for (i = 0; i < comp_hand_size; ++i) {
 		struct match *match_found;
@@ -830,19 +881,21 @@ void computer_turn() {
 
 	// Discard something
 	if (comp_hand_size > 0) {
+		unsigned char discard_rank_counts[MAX_RANK_EXCL];
+		unsigned char discard_size = calc_rank_counts(discard_rank_counts, discard);
+
 		// Find out what rank we have least of that is not zero
 		minind = 0xFF;
 		minval = 0xFF;
 		for (i = 1; i < MAX_RANK_EXCL; ++i) {
-			if (rank_counts[i] != 0 && rank_counts[i] < minval) {
+			if (discard_rank_counts[i] < 2 && rank_counts[i] != 0 && rank_counts[i] < minval) {
 				minval = rank_counts[i];
 				minind = i;
 			}
 		}
-		// minind is the rank we have least of
+		// minind is the rank we have least of that wont be a rummy
 		if (minind == 0xFF) {
-			selected_cards[0] = &( computer_hand[0] );
-			
+			selected_cards[0] = &( computer_hand[0] );	
 		} else {
 			for (i = 0; i < comp_hand_size; ++i) {
 				if (minind == get_card_rank( computer_hand[i] )) {
@@ -850,6 +903,11 @@ void computer_turn() {
 					break;
 				}
 			}
+		}
+
+		// If we haven't discarded anything we will discard the first card in our hand
+		if (selected_cards[0] == NULL) {
+			selected_cards[0] = &( computer_hand[0] );
 		}
 		selected_cards_size = 1;
 		discard_card_from_hand();
@@ -1234,8 +1292,19 @@ void draw_half_card_back() {
 	POKE(0x9F21, y_offset + CARD_DRAW_YOFF);
 }
 
+unsigned char x_offset_table[7 + 1];
+
 unsigned char get_x_offset(unsigned char pile_num) {
-	return (2 + (CARD_GRAPHICS_WIDTH + 1) * pile_num);
+	unsigned char val;
+	
+	val = x_offset_table[pile_num];
+	if (val != 0) {
+		return val;
+	}
+	// Need to calculate offset
+	val = (2 + (CARD_GRAPHICS_WIDTH + 1) * pile_num);
+	x_offset_table[pile_num] = val;
+	return val;
 }
 
 void draw_selected_card() {
