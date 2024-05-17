@@ -96,8 +96,6 @@ void start_game() {
 	picked_up_card = NULL;
 	
 	hand_display_offset = 0;
-	player_hand[0] = CARD_NP;
-	computer_hand[0] = CARD_NP;
 	discard[0] = CARD_NP;
 	
 	shuffle_deck();
@@ -106,12 +104,15 @@ void start_game() {
 	deck_size = MAX_DECK_SIZE;
 	
 	for (i = 0; i < STARTING_HAND_SIZE; ++i) {
-		is_player_turn = 1;
-		draw_card_from_deck();
-		is_player_turn = 0;
-		draw_card_from_deck();
-		deck_size -= 2;
+		--deck_size;
+		computer_hand[i] = deck[deck_size];
+		--deck_size;
+		player_hand[i] = deck[deck_size];
 	}
+	computer_hand[STARTING_HAND_SIZE] = CARD_NP;
+	player_hand[STARTING_HAND_SIZE] = CARD_NP;
+	deck[deck_size] = CARD_NP;
+
 	move_cards(discard, 0, deck, deck_size - 1);
 	--deck_size;
 	
@@ -137,7 +138,19 @@ void draw_card_from_deck() {
 	deck_size = get_pile_size(deck);
 	hand_size = get_pile_size(hand);
 	
-	move_cards(hand, hand_size, deck, deck_size - 1);
+	if (deck_size > 0) {
+		move_cards(hand, hand_size, deck, deck_size - 1);
+	} else {
+		unsigned char discard_size;
+		deck_size = 0;
+		while (discard_size != 0) {
+			deck[deck_size] = --discard[discard_size];
+			--discard_size;
+			++deck_size;
+		}
+		discard[1] = CARD_NP;
+		deck[deck_size] = CARD_NP;
+	}
 }
 
 void move_cards(unsigned char *dest_pile, unsigned char dest_offset,
@@ -187,11 +200,13 @@ void remove_card_from_hand(unsigned char *card) {
 	unsigned char *hand;
 	unsigned char i;
 	unsigned char offset;
+	unsigned char hand_size;
 	
 	hand = (is_player_turn ? player_hand : computer_hand);
 	offset = card - hand;
+	hand_size = get_pile_size(hand);
 	
-	for (i = offset + 1; hand[i] != CARD_NP; ++i) {
+	for (i = offset + 1; i < hand_size; ++i) {
 		hand[i - 1] = hand[i];
 	}
 	hand[i - 1] = CARD_NP;
@@ -580,8 +595,8 @@ unsigned char get_max_rank_pile(unsigned char *pile) {
 	unsigned char i;
 	unsigned char max_rank;
 	
-	max_rank = get_card_rank(*pile);
-	for (i = 1; pile[i] != CARD_NP; ++i) {
+	max_rank = get_card_rank(pile[0]);
+	for (i = 0; pile[i] != CARD_NP; ++i) {
 		unsigned char c_rank = get_card_rank(pile[i]);
 		if (c_rank > max_rank) { max_rank = c_rank; }
 	}
@@ -593,8 +608,8 @@ unsigned char get_max_rank_pile_ace_high(unsigned char *pile) {
 	unsigned char max_rank;
 	
 	max_rank = get_card_rank(*pile);
-	if (max_rank == CARD_ACE) { return CARD_ACE_HIGH; }
-	for (i = 1; pile[i] != CARD_NP; ++i) {
+	//	if (max_rank == CARD_ACE) { return CARD_ACE_HIGH; }
+	for (i = 0; pile[i] != CARD_NP; ++i) {
 		unsigned char c_rank = get_card_rank(pile[i]);
 		if (c_rank == CARD_ACE) { return CARD_ACE_HIGH; }
 		if (c_rank > max_rank) { max_rank = c_rank; }
@@ -638,7 +653,7 @@ void sort_pile_rank(unsigned char *pile) {
 	
 	lowest_rank = get_card_rank(pile[0]);
 	lowind = 0;
-	for (i = 1; pile[i] != CARD_NP; ++i) {
+	if (pile[0] != CARD_NP) for (i = 1; pile[i] != CARD_NP; ++i) {
 		unsigned char comp_rank = get_card_rank(pile[i]);
 		if (is_lower_rank(comp_rank, lowest_rank, ace_high)) {
 			lowest_rank = comp_rank;
@@ -1333,6 +1348,7 @@ void draw_selected_card() {
 void draw_hands() {
 	unsigned char i;
 	unsigned char selected_card_x_offset = get_x_offset(6);
+	unsigned char hand_size;
 	
 	// Draw face down cards representing computer's hand
 	POKE(0x9F20, get_x_offset(0) << 1);
@@ -1359,7 +1375,8 @@ void draw_hands() {
 	POKE(0x9F20, get_x_offset(0) << 1);
 	POKE(0x9F21, HAND_Y_OFFSET);
 	
-	for (i = 0; player_hand[i + hand_display_offset] != CARD_NP && 
+	hand_size = get_pile_size(player_hand);
+	for (i = 0; i + hand_display_offset < hand_size && 
 		(PEEK(0x9F20) >> 1) + CARD_GRAPHICS_WIDTH < selected_card_x_offset; ++i) {
 		draw_card(player_hand[i + hand_display_offset]);
 	}
@@ -1415,10 +1432,9 @@ void draw_deck_pile() {
 			draw_empty_card();
 		}
 	} else {
-		draw_card(discard[0]);
-	}
-	for (i = 1; discard[i] != CARD_NP; ++i) {
-		draw_card(discard[i]);
+		for (i = 0; discard[i] != CARD_NP; ++i) {
+			draw_card(discard[i]);
+		}
 	}
 	if (picked_up_card != NULL) {
 		draw_undo_card();
@@ -1577,6 +1593,10 @@ char press_string[] = "PRESS SPACE TO PLAY AGAIN ";
 char player_score_text_str[] = "YOUR SCORE: ";
 char comp_score_text_str[] = "COMPUTER'S SCORE: ";
 
+char score_so_far_str[] = "YOU SO FAR: ";
+char computer_text_str[] = "COMPUTER SO FAR: ";
+
+#define SCORE_SO_FAR_XOFF 19
 #define PLAYER_SCORE_XOFF 19
 #define COMPUTER_SCORE_XOFF 44
 
@@ -1584,14 +1604,19 @@ char player_score_str[6];
 char computer_score_str[6];
 
 #define WIN_TOP_Y 25
-#define WIN_MID_Y 28
-#define WIN_WIN_Y 31
+#define WIN_WIN_Y 28
+#define WIN_SCORES_Y 31
 #define WIN_BOT_Y 34
+
+unsigned short player_score_so_far = 0;
+unsigned short computer_score_so_far = 0;
+unsigned char is_first_game = 1;
 
 void display_win() {
 	unsigned short player_score, computer_score;
+	unsigned char first_game_offset = is_first_game ? 0 : 3;
 
-	clear_rect(0, WIN_TOP_Y - 1, SCREEN_WIDTH, WIN_BOT_Y + 2);
+	clear_rect(0, WIN_TOP_Y - 1, SCREEN_WIDTH, WIN_BOT_Y + 2 + first_game_offset);
 
 	player_score = calc_matches_score(player_matches, player_matches_size);
 	computer_score = calc_matches_score(computer_matches, computer_matches_size);
@@ -1602,19 +1627,13 @@ void display_win() {
 		computer_score += calc_pile_score(player_hand);
 	}
 
+	player_score_so_far += player_score;
+	computer_score_so_far += computer_score;
+
 	itoa(player_score, player_score_str, 10);
 	itoa(computer_score, computer_score_str, 10);
 
 	POKE(0x9F22, 0x10);
-	POKE(0x9F21, WIN_MID_Y);
-	POKE(0x9F20, PLAYER_SCORE_XOFF << 1);
-	poke_str(player_score_text_str);
-	poke_str(player_score_str);
-
-	POKE(0x9F20, COMPUTER_SCORE_XOFF << 1);
-	poke_str(comp_score_text_str);
-	poke_str(computer_score_str);
-	
 	POKE(0x9F21, WIN_TOP_Y);
 	if (player_went_out_first) {
 		POKE(0x9F20, center_str_offset(PLAYER_OUT_STRLEN));
@@ -1623,7 +1642,7 @@ void display_win() {
 		POKE(0x9F20, center_str_offset(COMP_OUT_STRLEN));
 		poke_str(comp_out_string);
 	}
-	
+
 	POKE(0x9F21, WIN_WIN_Y);
 	if (player_score > computer_score) {
 		POKE(0x9F20, center_str_offset(VICTORY_STRLEN));
@@ -1636,9 +1655,34 @@ void display_win() {
 		poke_str(loser_string);
 	}
 
-	POKE(0x9F21, WIN_BOT_Y);
+	POKE(0x9F21, WIN_SCORES_Y);
+	POKE(0x9F20, PLAYER_SCORE_XOFF << 1);
+	poke_str(player_score_text_str);
+	poke_str(player_score_str);
+
+	POKE(0x9F20, COMPUTER_SCORE_XOFF << 1);
+	poke_str(comp_score_text_str);
+	poke_str(computer_score_str);
+
+	if (!is_first_game) {
+		POKE(0x9F21, WIN_SCORES_Y + first_game_offset);
+		POKE(0x9F20, SCORE_SO_FAR_XOFF << 1);
+		poke_str(score_so_far_str);
+
+		itoa(player_score_so_far, player_score_str, 10);
+		poke_str(player_score_str);
+		
+		POKE(0x9F20, COMPUTER_SCORE_XOFF << 1);
+		itoa(computer_score_so_far, computer_score_str, 10);
+		poke_str(computer_text_str);
+		poke_str(computer_score_str);
+	}
+
+	POKE(0x9F21, WIN_BOT_Y + first_game_offset);
 	POKE(0x9F20, center_str_offset(PRESS_STRLEN));
 	poke_str(press_string);
-	
+
+	is_first_game = 0;
+
 	while (cbm_k_getin() != 0x20);
 }
