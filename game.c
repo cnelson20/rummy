@@ -225,7 +225,7 @@ void discard_card_from_hand() {
 }
 
 unsigned char max_hand_display_offset(unsigned char hand_size) {
-	unsigned char x = (get_x_offset(6) - get_x_offset(0) - CARD_GRAPHICS_WIDTH + CARD_DRAW_XOFF) / CARD_DRAW_XOFF;
+	unsigned char x = (get_x_offset(6) - CARD_GRAPHICS_WIDTH + CARD_DRAW_XOFF - get_x_offset(0)) / CARD_DRAW_XOFF;
 
 	if (hand_size < x) {
 		return 0;
@@ -419,6 +419,9 @@ unsigned char *find_selection() {
 		} else if (tile_val != 0x20 && tile_y >= HAND_Y_OFFSET && tile_y < HAND_Y_END) {
 			if (tile_x < get_x_offset(0)) {
 				return CLICKED_LEFT;
+			} else if (tile_x >= get_x_offset(6) - CARD_GRAPHICS_WIDTH + CARD_DRAW_XOFF 
+				&& tile_x < get_x_offset(6)) {
+				return CLICKED_RIGHT;
 			}
 			
 			pile_size = get_pile_size(player_hand);
@@ -1616,7 +1619,7 @@ void display_win() {
 	unsigned short player_score, computer_score;
 	unsigned char first_game_offset = is_first_game ? 0 : 3;
 
-	clear_rect(0, WIN_TOP_Y - 1, SCREEN_WIDTH, WIN_BOT_Y + 2 + first_game_offset);
+	clear_rect(0, WIN_TOP_Y - 1, SCREEN_WIDTH, WIN_BOT_Y + 2 + 3);
 
 	player_score = calc_matches_score(player_matches, player_matches_size);
 	computer_score = calc_matches_score(computer_matches, computer_matches_size);
